@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+require 'pathname'
+
+dir = '/Users/skonb/Downloads/victory!'
+{chestpress: {angles: [0, 45, 90], count: 6}, bicepscurl: {angles: [0, 45, 90], count: 2}, latpulldown: {angles: [90, 135, 180], count: 2}, tricepspressdown: {angles: [45, 90, 180], count: 2}}.each do |k, v|
+  # v[:angles].each do |i|
+  #   target = (Pathname(dir) / "#{k}" / "#{k}_#{i}_act_b.mp4").to_s
+  #   output = (Pathname(dir) / "#{k}" / "#{k}_#{i}").to_s
+  #   Dir.mkdir output unless Dir.exists? output
+  #   `ffmpeg -i #{target} -vf fps=30 #{output}/#{k}_#{i}_%d.png`
+  # end
+  v[:angles].each do |i|
+    cmd = "./detect detect --dir #{dir}/#{k}/#{k}_#{i} --format #{k}_#{i}_%d.png --out #{k}_#{i}_out --count #{v[:count]}"
+    puts cmd
+    `#{cmd}`
+  end
+end

@@ -1,0 +1,98 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'commander'
+require 'opencv'
+require 'json'
+require 'kmeans-clusterer'
+
+class MyApplication
+  include Commander::Methods
+
+  # include whatever modules you need
+
+  def run
+    program :name, 'find_pulstone'
+    program :version, '0.0.1'
+    program :description, 'find pulstone in movie file'
+
+
+    command :detect do |c|
+      c.syntax = 'find_pulstone detect [options]'
+      c.summary = ''
+      c.description = ''
+      c.option '--dir STRING', 'thumbnails dir'
+      c.option '--format STRING', 'format of thumbnail'
+      c.option '--out STRING', 'output dir'
+      c.option '--count INTEGER', 'required count'
+      c.action do |args, options|
+        index = 1
+        json = {}
+
+
+        colors = []
+        while true
+          path = Pathname(options.dir) / sprintf(options.format, index.to_s)
+          break unless File.exists? path
+          cvmat = OpenCV::CvMat.load path.to_s
+          gray = cvmat.BGR2GRAY
+          canny = gray.canny 50, 150
+          contour = canny.find_contours mode: OpenCV::CV_RETR_LIST, method: OpenCV::CV_CHAIN_APPROX_SIMPLE
+          while contour
+            unless contour.hole?
+              box = contour.bounding_rect
+              centerX = box.center.x.round
+              centerY = box.center.y.round
+              color = cvmat[(centerX + cvmat.width * centerY)]
+              color = [color[0], color[1], color[2]]
+              colors << color
+            end
+            contour = contour.h_next
+          end
+          index+=1
+        end
+
+        kmeans = KMeansClusterer.run options.count.to_i, colors, runs: 5
+        index = 1
+        json = {}
+        Dir.mkdir options.out unless Dir.exists? options.out
+        while true
+          path = Pathname(options.dir) / sprintf(options.format, index.to_s)
+          break unless File.exists? path
+          cvmat = OpenCV::CvMat.load path.to_s
+          gray = cvmat.BGR2GRAY
+          canny = gray.canny 50, 150
+          contour = canny.find_contours mode: OpenCV::CV_RETR_LIST, method: OpenCV::CV_CHAIN_APPROX_SIMPLE
+          data = {}
+          while contour
+            unless contour.hole?
+              box = contour.bounding_rect
+              centerX = box.center.x.round
+              centerY = box.center.y.round
+              color = cvmat[(centerX + cvmat.width * centerY)]
+              color = [color[0], color[1], color[2]]
+              predicted = kmeans.predict [color]
+              data[predicted[0]] = [centerX, centerY]
+              cvmat.rectangle! box.top_left, box.bottom_right, :color => OpenCV::CvColor::Black
+            end
+            contour = contour.h_next
+          end
+          if data.count.to_i == options.count.to_i
+            json[index] = data
+            cvmat.save_image (Pathname(options.out) / "#{index}.png").to_s
+          end
+          index+=1
+        end
+
+        outfile = File.basename(options.format, File.extname(options.format)).gsub('%d', '')
+        File.open (Pathname(options.out) / "#{outfile}_positions.json").to_s, 'w' do |out|
+          out.write JSON.generate(json)
+        end
+      end
+    end
+
+    run!
+  end
+end
+
+MyApplication.new.run if $0 == __FILE__
